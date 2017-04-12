@@ -50,7 +50,7 @@ namespace XmpCore.Impl
         {
             ParameterAsserts.AssertNotNull(bytes);
             options = options ?? new ParseOptions();
-            var doc = ParseXmlFromByteBuffer(new ByteBuffer(bytes), options);
+            var doc = ParseXmlFromByteBuffer(new MemoryStream(bytes), options);
             return ParseXmlDoc(doc, options);
         }
 
@@ -62,7 +62,7 @@ namespace XmpCore.Impl
         {
             ParameterAsserts.AssertNotNull(byteBuffer);
             options = options ?? new ParseOptions();
-            var doc = ParseXmlFromByteBuffer(byteBuffer, options);
+            var doc = ParseXmlFromByteBuffer(byteBuffer.GetByteStream(), options);
             return ParseXmlDoc(doc, options);
         }
 
@@ -101,7 +101,7 @@ namespace XmpCore.Impl
         {
             ParameterAsserts.AssertNotNull(bytes);
             options = options ?? new ParseOptions();
-            return ParseXmlFromByteBuffer(new ByteBuffer(bytes), options);
+            return ParseXmlFromByteBuffer(new MemoryStream(bytes), options);
         }
 
         private static IXmpMeta ParseXmlDoc(XDocument document, ParseOptions options)
@@ -148,7 +148,7 @@ namespace XmpCore.Impl
             try
             {
                 // load stream into bytebuffer
-                return ParseXmlFromByteBuffer(new ByteBuffer(stream), options);
+                return ParseXmlFromByteBuffer(stream, options);
             }
             catch (IOException e)
             {
@@ -164,34 +164,34 @@ namespace XmpCore.Impl
         /// <param name="options">the parsing options</param>
         /// <returns>Returns an XML DOM-Document.</returns>
         /// <exception cref="XmpException">Thrown when the parsing fails.</exception>
-        private static XDocument ParseXmlFromByteBuffer(ByteBuffer buffer, ParseOptions options)
+        private static XDocument ParseXmlFromByteBuffer(Stream stream, ParseOptions options)
         {
             try
             {
-                return ParseStream(buffer.GetByteStream(), options);
+                return ParseStream(stream, options);
             }
             catch (XmpException e)
             {
-                if (e.ErrorCode == XmpErrorCode.BadXml || e.ErrorCode == XmpErrorCode.BadStream)
-                {
-                    if (options.AcceptLatin1)
-                        buffer = Latin1Converter.Convert(buffer);
+                //if (e.ErrorCode == XmpErrorCode.BadXml || e.ErrorCode == XmpErrorCode.BadStream)
+                //{
+                //    if (options.AcceptLatin1)
+                //        buffer = Latin1Converter.Convert(buffer);
 
-                    if (options.FixControlChars)
-                    {
-                        try
-                        {
-                            return ParseTextReader(new FixAsciiControlsReader(new StreamReader(buffer.GetByteStream(), buffer.GetEncoding())), options);
-                        }
-                        catch
-                        {
-                            // can normally not happen as the encoding is provided by a util function
-                            throw new XmpException("Unsupported Encoding", XmpErrorCode.InternalFailure, e);
-                        }
-                    }
+                //    if (options.FixControlChars)
+                //    {
+                //        try
+                //        {
+                //            return ParseTextReader(new FixAsciiControlsReader(new StreamReader(stream, stream.GetEncoding())), options);
+                //        }
+                //        catch
+                //        {
+                //            // can normally not happen as the encoding is provided by a util function
+                //            throw new XmpException("Unsupported Encoding", XmpErrorCode.InternalFailure, e);
+                //        }
+                //    }
 
-                    return ParseStream(buffer.GetByteStream(), options);
-                }
+                //    return ParseStream(buffer.GetByteStream(), options);
+                //}
 
                 throw;
             }
@@ -230,6 +230,8 @@ namespace XmpCore.Impl
                 // size of the internal subset is limited to 10 million characters.
 
                 var rdrSettings = new XmlReaderSettings();
+                //rdrSettings.ConformanceLevel = ConformanceLevel.Fragment;
+                rdrSettings.IgnoreWhitespace = true;
                 if (options.DisallowDoctype)
                 {
 #if NET35
@@ -253,10 +255,9 @@ namespace XmpCore.Impl
 
                 rdrSettings.MaxCharactersFromEntities = (long)1e7;
 
-                using (var rdr = XmlReader.Create(new StreamReader(stream), rdrSettings))
-                {
-                    return XDocument.Load(rdr);
-                }
+                var val = new StreamReader(stream, true).ReadToEnd();
+                val = val.Trim((char)0);
+                return XDocument.Parse(val);
             }
             catch (XmlException e)
             {
